@@ -1,0 +1,9 @@
+# Page samples hold real conversation
+samples/
+__pycache__/
+*.pyc
+*.bak
+*.tmp
+
+# Our own speaker names stay on this computer
+names.json
