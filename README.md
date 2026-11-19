@@ -1,6 +1,6 @@
 # Molt — the rolling window
 
-*by ayakohi and Cygnus* · version 0.3.1 · MIT license
+*by ayakohi and Cygnus* · version 0.3.2 · MIT license
 
 Molt keeps one long Claude Code conversation going without compacting it.
 
@@ -119,6 +119,9 @@ Claude can search the moved-out pages of its own thread, by word, by meaning and
 
 - **Only the conversation is searched**: your words, Claude's words and other sessions' messages. Thinking and
   tool output are left out.
+- **Every result names its speaker**: you, Claude, another session by its name, or a subagent as
+  `subagent <id>`. A session Claude Code named after your home folder (often your full name) shows as
+  `home-…`, so that name never travels with a quoted result. Background notices are not speakers.
 - **It can come back empty on purpose.** A search counts only when something holds two of its words, or sits
   close in meaning. Otherwise the answer is an honest "nothing matches", with the faintest near misses under
   `--debug`.

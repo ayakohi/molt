@@ -782,6 +782,29 @@ def test_whole_copy_and_fingerprint():
     assert thread.fingerprint({"type": "assistant", "timestamp": "T", "message": {"content": [{"type": "tool_use", "id": "x"}]}}) is None
 
 
+def test_speakers():
+    say = lambda r: thread.Thread.speaker(None, r)
+    queued = lambda p: {"type": "attachment", "attachment": {"type": "queued_command", "prompt": p}}
+    typed = lambda t: {"type": "user", "message": {"role": "user", "content": t}}
+    assert say(typed("pizza tonight?")) == ("user", "pizza tonight?")
+    assert say(queued("and cheese")) == ("user", "and cheese")
+    assert say(queued('<cross-session-message from="uds:x" from-name="pizza-foreman">Oven is hot.</cross-session-message>')) \
+        == ("session", "pizza-foreman", "Oven is hot.")
+    assert say(queued('<agent-message from="a5f962d1555695bf6">[Subagent hand-back] Dough checked.</agent-message>')) \
+        == ("session", "subagent a5f962d1", "[Subagent hand-back] Dough checked.")
+    assert say(typed('<agent-message from="b1">Report.</agent-message>')) == ("session", "subagent b1", "Report.")
+    real, thread.HOME_SLUG = thread.HOME_SLUG, "sam-jones"
+    try:
+        sent = say(queued('<cross-session-message from="uds:x" from-name="sam-jones-10">hi</cross-session-message>'))
+        assert sent == ("session", "home-10", "hi"), sent
+        assert thread.sender("pizza-foreman") == "pizza-foreman"
+    finally:
+        thread.HOME_SLUG = real
+    for harness in ("<task-notification>done</task-notification>", "<side-sessions-event>x</side-sessions-event>",
+                    "<ci-monitor-event>x</ci-monitor-event>"):
+        assert say(queued(harness)) is None and say(typed(harness)) is None
+
+
 def test_names():
     d = fresh()
     assert readable.load_names(d / "missing.json") == ("You", "Claude")
@@ -843,7 +866,7 @@ def test_auto_roll():
 TESTS = [test_plain_trim, test_thinning, test_guard, test_fork_after_trim, test_fork_before_trim, test_tree,
          test_failed_trim, test_search, test_thin_only, test_no_thin_and_practice, test_whole_copy_and_fingerprint,
          test_names, test_auto_roll, test_search_meaning, test_guards, test_open_scope,
-         test_search_edges, test_close_hook]
+         test_search_edges, test_close_hook, test_speakers]
 
 
 def main() -> int:

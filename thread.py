@@ -25,8 +25,33 @@ PROJECTS_DIR = Path.home() / ".claude" / "projects"
 SYSTEM_PREFIXES = (
     "<task-notification", "<local-command-", "<command-name", "<command-message",
     "<command-args", "<system-reminder", "[Request interrupted", "Caveat:",
+    "<side-sessions-event", "<ci-monitor-event",
 )
+# Messages from someone other than the user, wrapped in an envelope that names the sender.
 SESSION_RE = re.compile(r'<cross-session-message[^>]*from-name="([^"]*)"[^>]*>\s*(.*?)\s*(?:</cross-session-message>|$)', re.S)
+AGENT_RE = re.compile(r'^\s*<agent-message[^>]*from="([^"]*)"[^>]*>\s*(.*?)\s*(?:</agent-message>|$)', re.S)
+
+
+# Claude Code names a session started in the home folder after that folder, which is often a person's
+# full name. Such names read as "home-…" instead, so the name never travels with a quoted search result.
+HOME_SLUG = re.sub(r"[^a-z0-9]+", "-", Path.home().name.lower()).strip("-")
+
+
+def sender(name: str) -> str:
+    if HOME_SLUG and (name.lower() == HOME_SLUG or name.lower().startswith(HOME_SLUG + "-")):
+        return "home" + name[len(HOME_SLUG):]
+    return name
+
+
+def envelope(text: str):
+    """('session', sender, text) when text is a message another session or a subagent sent in; else None."""
+    m = SESSION_RE.search(text)
+    if m:
+        return ("session", sender(m.group(1)), m.group(2))
+    m = AGENT_RE.match(text)
+    if m:
+        return ("session", f"subagent {m.group(1)[:8]}", m.group(2))
+    return None
 
 
 def find(session_id: str) -> Path:
@@ -108,20 +133,21 @@ class Thread:
     # ---- what a row is -------------------------------------------------------
 
     def speaker(self, r: dict):
-        """('user', text) | ('session', name, text) | None for anything that is not a message to Claude."""
+        """('user', text) | ('session', sender, text) | None for anything that is not a message to Claude.
+        A sender is another session by its name, or a subagent as 'subagent <first 8 of its id>'."""
         if r.get("type") == "user" and not r.get("isMeta") and not r.get("isCompactSummary"):
             text = text_of(r)
             if text and not text.lstrip().startswith(SYSTEM_PREFIXES) and not is_tool_result(r):
-                return ("user", text)
+                return envelope(text) or ("user", text)
         if r.get("type") == "attachment":
             a = r.get("attachment") or {}
             if a.get("type") == "queued_command":
                 p = a.get("prompt") or ""
                 if isinstance(p, list):
                     p = "\n".join(b.get("text", "") for b in p if isinstance(b, dict) and b.get("type") == "text")
-                m = SESSION_RE.search(p)
-                if m:
-                    return ("session", m.group(1), m.group(2))
+                sent = envelope(p)
+                if sent:
+                    return sent
                 p = p.strip()
                 if p and not p.startswith(SYSTEM_PREFIXES):
                     return ("user", p)         # a message typed while Claude was busy
