@@ -10,6 +10,60 @@ written, and turns what it lifted out into a page you can read in your browser.
 
 Nothing is summarised and nothing is deleted.
 
+## At a glance
+
+**Compact vs molt.** Compacting rewrites the past as a summary. Molt keeps the recent past word for word and
+puts the older part on a shelf you can still read and search.
+
+```mermaid
+flowchart LR
+    subgraph before["A long thread"]
+        direction TB
+        old["Older conversation"]
+        new["Newest ~200k tokens"]
+    end
+    subgraph after["After a molt"]
+        direction TB
+        kept["Newest ~200k tokens<br/>word for word"]
+        note["Roll note<br/>(the last message)"]
+    end
+    subgraph shelf["~/Thread Archive"]
+        direction TB
+        page["Readable page"]
+        raw["Exact copy"]
+        idx["Search index"]
+    end
+    new --> kept
+    old --> page
+    old --> raw
+    old --> idx
+```
+
+**One roll, three steps for you.** The roll note is the yes. Anything said or done after it is the no.
+
+```mermaid
+flowchart TD
+    A["You type /molt"] --> B["Claude writes the roll note<br/>as its very last message"]
+    B --> C["You close the thread"]
+    C --> D{"Is the roll note still the last word,<br/>and is it this thread's own note?"}
+    D -- "No" --> E["Nothing happens"]
+    D -- "Yes" --> F["Molt rolls it a few seconds later:<br/>backup · shorten old tool output · cut · archive · check"]
+    F --> G["You count to five and reopen"]
+    G --> H["Claude wakes with the newest ~200k<br/>and the note on top of the pile"]
+```
+
+**Reaching back.** Search only runs when someone asks, and it can honestly come back empty.
+
+```mermaid
+flowchart LR
+    Q["search &quot;pizza toppings&quot;"] --> W["Words that match"]
+    Q --> M["Meaning that matches"]
+    W --> H{"Does the search<br/>land anywhere real?"}
+    M --> H
+    H -- "No" --> N["Nothing matches<br/>(an honest empty)"]
+    H -- "Yes" --> R["Strong matches first, newest first,<br/>each with its date and who said it"]
+```
+
 ## What you get
 
 - **A thread that stays itself.** The recent conversation is untouched, word for word.
