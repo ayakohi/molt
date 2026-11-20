@@ -81,7 +81,8 @@ class Thread:
             try:
                 self.rows.append(json.loads(l))
             except ValueError:
-                self.rows.append({})          # unreadable line: kept verbatim, never interpreted
+                self.rows.append({})          # unreadable line: its text stays in self.lines and is written back
+                                              # as it was; as a row it is empty, so nothing counts or moves it
         self.by_uuid = {r["uuid"]: i for i, r in enumerate(self.rows) if r.get("uuid")}
 
     # ---- naming --------------------------------------------------------------

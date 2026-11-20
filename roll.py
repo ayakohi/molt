@@ -45,7 +45,7 @@ import readable as R   # noqa: E402
 if hasattr(sys.stdout, "reconfigure"):      # in place, so loading this file twice never closes the first stream
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 ARCHIVE = Path(os.environ.get("ROLL_ARCHIVE") or Path.home() / "Thread Archive")   # override for tests only
 KEEP_K = 200                 # thousands of tokens of conversation left after a trim

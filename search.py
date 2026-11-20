@@ -129,10 +129,14 @@ def index_page(raw: Path, embed=None) -> str:
     import numpy as np
     cs = chunks(messages(raw))
     vecs = embed([c["text"] for c in cs]) if cs else np.zeros((0, 768), dtype="float32")
-    with open(vector_file(raw), "wb") as f:
-        np.save(f, vecs.astype("float16"))
-    meta = raw.with_name(raw.stem + ".vectors.json")
-    meta.write_text(json.dumps({"model": MODEL, "chunks": len(cs)}), encoding="utf-8")
+    # each file is written whole to a temporary name, then swapped in; the record goes last, so a
+    # crash leaves either the old index or the new one, and load_vectors rejects any mismatch
+    vec, meta = vector_file(raw), raw.with_name(raw.stem + ".vectors.json")
+    with open(vec.with_name(vec.name + ".tmp"), "wb") as f:
+        np.save(f, vecs.astype("float16"), allow_pickle=False)
+    os.replace(vec.with_name(vec.name + ".tmp"), vec)
+    meta.with_name(meta.name + ".tmp").write_text(json.dumps({"model": MODEL, "chunks": len(cs)}), encoding="utf-8")
+    os.replace(meta.with_name(meta.name + ".tmp"), meta)
     return f"Indexed {len(cs)} chunks for search by meaning."
 
 
@@ -161,7 +165,8 @@ def load_vectors(raw: Path, count: int):
         if meta.get("model") != MODEL or meta.get("chunks") != count:
             return None
         import numpy as np
-        return np.load(vector_file(raw)).astype("float32")
+        vecs = np.load(vector_file(raw), allow_pickle=False)
+        return vecs.astype("float32") if vecs.ndim == 2 and vecs.shape[0] == count else None
     except (OSError, ValueError, ImportError):
         return None
 

@@ -1,6 +1,6 @@
 # Molt — the rolling window
 
-*by ayakohi and Cygnus* · version 0.3.2 · MIT license
+*by ayakohi and Cygnus* · version 0.3.3 · MIT license
 
 Molt keeps one long Claude Code conversation going without compacting it.
 
@@ -64,10 +64,14 @@ flowchart LR
     H -- "Yes" --> R["Strong matches first, newest first,<br/>each with its date and who said it"]
 ```
 
+Before trusting it with a thread you care about, read **[Known limits](#known-limits)**. It lists every way
+molt can fall short that we know of.
+
 ## What you get
 
 - **A thread that stays itself.** The recent conversation is untouched, word for word.
-- **A readable archive.** Everything that moved out becomes an HTML page in `~/Thread Archive`.
+- **A readable archive.** Everything that moved out becomes an HTML page in `~/Thread Archive`. Each page
+  carries everything it needs inside itself and fetches nothing from the internet.
 - **A family tree for forks.** If you fork a conversation, the fork's pages land in the same folder and link
   back to the history they share.
 - **Search by word, by meaning and by date** across everything that was moved out, on your own computer.
@@ -83,7 +87,8 @@ flowchart LR
 
 ## Set up
 
-1. Put this folder at `~/.claude/molt`.
+1. Put this folder at `~/.claude/molt`. Keep it somewhere only you can write to: molt runs the Python files
+   it finds beside itself.
 2. Copy the `skill` folder to `~/.claude/skills/molt`. This gives Claude Code the `/molt` command.
 3. Add the two hooks below to `~/.claude/settings.json`. They make a thread roll itself when it closes.
 4. Read **Making it yours** below before your first roll.
@@ -222,9 +227,8 @@ knowing about all three pages, not only the last.
 - **The kept size runs a little over.** Claude Code adds its own fixed overhead (system prompt, tools,
   instructions), so a 200k keep lands around 235–250k.
 - **Images are skipped in the pages.** They show as `[image]`.
-- **Pages load two display helpers from the internet** (marked and DOMPurify, pinned versions, from cdnjs) to
-  show formatting. Offline, a page shows plain text instead. Bundling them beside the pages would remove the
-  outside fetch.
+- **Pages made before version 0.3.3 still fetch two display helpers from the internet.** Newer pages carry
+  them inside (see `vendor/`) and fetch nothing. Offline, an older page shows plain text instead.
 - **Threads with few typed messages** (long automated runs) have few clean cut points, so a trim there may
   keep less than asked.
 - **A fork can end up with no page of its own.** If everything it would move out is already in a sibling's

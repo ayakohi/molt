@@ -7,6 +7,7 @@ where it was saved, and one quiet line per tool use. No tool output, no bookkeep
 
 import html
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -141,8 +142,6 @@ HEAD = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>__TITLE__</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&family=JetBrains+Mono&family=SUSE:wght@400;600&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
 <style>
 __CSS__</style></head>
 """
@@ -152,8 +151,7 @@ PAGE = HEAD + """<body><main>
 <div id="log"></div>
 </main>
 <script id="data" type="application/json">__DATA__</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+__LIBS__
 <script>
 const turns = JSON.parse(document.getElementById('data').textContent);
 const md = (s) => (window.marked && window.DOMPurify) ? DOMPurify.sanitize(marked.parse(s)) : null;
@@ -196,9 +194,26 @@ def link_line(prev, tree) -> str:
     return '<div class="sub links">' + " · ".join(bits) + "</div>" if bits else ""
 
 
+# The page's two helpers travel inside every page, so a page needs nothing from the internet and still
+# reads the same in ten years: marked turns Markdown into HTML, DOMPurify cleans that HTML before it is
+# shown. Pinned copies with their license headers live in vendor/ (see vendor/README.md).
+VENDOR = Path(__file__).resolve().parent / "vendor"
+
+
+def libs() -> str:
+    """Both helpers as inline scripts, or "" when vendor/ is missing; the page then shows plain text."""
+    try:
+        code = [(VENDOR / name).read_text(encoding="utf-8") for name in ("marked.min.js", "purify.min.js")]
+    except OSError:
+        return ""
+    # only "</script" can end the tag early; neither library holds it, and its every "</" stays as written
+    safe = [re.sub(r"</(script)", r"<\\/\1", c, flags=re.I) for c in code]
+    return "\n".join("<script>\n" + c + "\n</script>" for c in safe)
+
+
 def to_html(title: str, subtitle: str, ts: list[dict], prev=None, tree=None) -> str:
     data = json.dumps(ts, ensure_ascii=False).replace("</", "<\\/")
-    return (PAGE.replace("__CSS__", CSS)
+    return (PAGE.replace("__LIBS__", libs()).replace("__CSS__", CSS)
                 .replace("__TITLE__", html.escape(title))
                 .replace("__SUBTITLE__", html.escape(subtitle))
                 .replace("__LINKS__", link_line(prev, tree))

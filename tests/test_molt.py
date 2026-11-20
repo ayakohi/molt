@@ -687,6 +687,34 @@ def test_close_hook():
     assert "damaged family record" in out.getvalue()
 
 
+def test_page_is_offline():
+    page = readable.to_html("Pizza chat", "sub", [{"who": "user", "name": "You", "when": "", "parts": [("say", "hi")]}])
+    assert "DOMPurify" in page and "marked" in page
+    for lib in ("marked.min.js", "purify.min.js"):                 # carried exactly as released
+        assert (ROOT / "vendor" / lib).read_text(encoding="utf-8") in page, lib
+    for fetch in ("<script src", "<link", "@import", "fonts.googleapis", "cdnjs.cloudflare"):
+        assert fetch not in page, fetch                          # nothing that loads from elsewhere
+
+
+def test_index_files():
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    d = fresh()
+    p = small([("pizza", 16), ("fruit", 16), ("tea", 12)], new_thread_path(d / "proj"))
+    assert trim(p, 60)[0]
+    raw = search.pages_raw(family_folders()[0])[0]
+    fake = lambda texts, query=False: np.ones((len(texts), 4), dtype="float32") / 2
+    search.index_page(raw, embed=fake)
+    count = len(search.chunks(search.messages(raw)))
+    assert not list(raw.parent.glob("*.tmp")), "temporary files are swapped in, never left behind"
+    assert search.load_vectors(raw, count) is not None
+    with open(search.vector_file(raw), "wb") as f:              # a half-written index, as after a crash
+        np.save(f, np.ones((count - 1, 4), dtype="float16"))
+    assert search.load_vectors(raw, count) is None
+
+
 def test_search_edges():
     # a search word must start a word
     assert search.cluster("what a party", ["art"])[0] == 0
@@ -866,7 +894,7 @@ def test_auto_roll():
 TESTS = [test_plain_trim, test_thinning, test_guard, test_fork_after_trim, test_fork_before_trim, test_tree,
          test_failed_trim, test_search, test_thin_only, test_no_thin_and_practice, test_whole_copy_and_fingerprint,
          test_names, test_auto_roll, test_search_meaning, test_guards, test_open_scope,
-         test_search_edges, test_close_hook, test_speakers]
+         test_search_edges, test_close_hook, test_speakers, test_page_is_offline, test_index_files]
 
 
 def main() -> int:
