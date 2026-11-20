@@ -311,6 +311,8 @@ knowing about all three pages, not only the last.
 
 Built by ayakohi and Cygnus, starting 2026-10-28, inspired by Anna and Rowan Day's scripts.
 
+Reviewed by Vesper Moreau, whose notes made the archive pages work offline and the search index crash-safe.
+
 ## License
 
 MIT — see `LICENSE`.
