@@ -687,6 +687,50 @@ def test_close_hook():
     assert "damaged family record" in out.getvalue()
 
 
+def test_markdown_pages():
+    try:
+        os.environ["MOLT_PAGES"] = "markdown"
+        d = fresh()
+        p = small([("pizza", 16), ("fruit", 16), ("tea", 12)], new_thread_path(d / "proj"))
+        assert trim(p, 60)[0]
+        folder = family_folders()[0]
+        md = sorted(f.name for f in folder.glob("*.md") if f.name != "index.md")
+        assert len(md) == 1 and (folder / "index.md").exists()
+        assert not list(folder.glob("*.html")), "markdown only: no html pages"
+        page = (folder / md[0]).read_text(encoding="utf-8")
+        assert page.startswith("---\ntitle: ") and "molt: page" in page and "\nmoved_out: " in page
+        assert "### " in page and "pizza talk 1" in page and "(index.md)" in page
+        assert "> [!quote]- thinking" in page and "· `ran" in page          # thinking folds, tools stay quiet
+
+        # a second roll: its page links back to the first, and the tree nests it under the first
+        speak(p, "cheese", times=20)
+        assert trim(p, 60)[0]
+        md2 = [readable.md_name(pg["file"]) for pg in record(folder)["pages"]]        # in the order they were made
+        assert len(md2) == 2 and all((folder / m).exists() for m in md2)
+        second = (folder / md2[1]).read_text(encoding="utf-8")
+        assert readable.quote(md2[0]) in second and "← earlier" in second
+        tree = (folder / "index.md").read_text(encoding="utf-8")
+        assert readable.quote(md2[0]) in tree and "\n  - [" in tree, tree
+        assert "pizza" in run_search("pizza", "talk", "--all"), "search reads the raw copy, whatever the page format"
+
+        # both: an html and a md page with one stem; a whole-thread copy follows the same setting
+        os.environ["MOLT_PAGES"] = "both"
+        q = small([("salad", 16), ("soup", 16), ("bread", 12)], new_thread_path(d / "proj"))
+        assert trim(q, 60)[0]
+        fq = next(f for f in family_folders() if q.stem[:8] in f.name)
+        stems = {f.stem for f in fq.glob("*.*") if not f.name.startswith(".")}
+        assert any(f.suffix == ".html" for f in fq.glob("*")) and any(f.suffix == ".md" for f in fq.glob("*"))
+        assert len(stems) == 2                                            # one page stem + index
+        with contextlib.redirect_stdout(io.StringIO()):
+            roll.copy_whole(thread.Thread(q))
+        assert {f.suffix for f in (roll.ARCHIVE / roll.WHOLE).glob("*")} == {".html", ".md"}
+
+        os.environ["MOLT_PAGES"] = "something else"
+        assert roll.page_formats() == ("html",)
+    finally:
+        os.environ.pop("MOLT_PAGES", None)
+
+
 def test_page_is_offline():
     page = readable.to_html("Pizza chat", "sub", [{"who": "user", "name": "You", "when": "", "parts": [("say", "hi")]}])
     assert "DOMPurify" in page and "marked" in page
@@ -894,7 +938,8 @@ def test_auto_roll():
 TESTS = [test_plain_trim, test_thinning, test_guard, test_fork_after_trim, test_fork_before_trim, test_tree,
          test_failed_trim, test_search, test_thin_only, test_no_thin_and_practice, test_whole_copy_and_fingerprint,
          test_names, test_auto_roll, test_search_meaning, test_guards, test_open_scope,
-         test_search_edges, test_close_hook, test_speakers, test_page_is_offline, test_index_files]
+         test_search_edges, test_close_hook, test_speakers, test_page_is_offline, test_index_files,
+         test_markdown_pages]
 
 
 def main() -> int:

@@ -229,9 +229,10 @@ __LIST__
 """
 
 
-def to_index(rec: dict) -> str:
-    """index.html for one family: pages nested under the page they continue from, and under each
-    page the Claude Code threads that carry on from it. rec is the family's .family.json."""
+def family_tree(rec: dict):
+    """(kids, under, loose) for one family, shared by the HTML and Markdown tree pages.
+    kids: {page stamp or None for the roots: [pages continuing from it]}; under: {page stamp:
+    [titles of Claude Code threads carrying on from it]}; loose: thread titles with nothing moved out."""
     pages, threads = rec["pages"], rec["threads"]
     stamps = {p["stamp"] for p in pages}
     kids = {}
@@ -245,6 +246,14 @@ def to_index(rec: dict) -> str:
             under.setdefault(at, []).append(th.get("title") or "Untitled")
         else:
             loose.append(th.get("title") or "Untitled")
+    return kids, under, loose
+
+
+def to_index(rec: dict) -> str:
+    """index.html for one family: pages nested under the page they continue from, and under each
+    page the Claude Code threads that carry on from it. rec is the family's .family.json."""
+    pages, threads = rec["pages"], rec["threads"]
+    kids, under, loose = family_tree(rec)
 
     def node(p: dict) -> str:
         label = f'{p["title"]} · {p["first"]} to {p["last"]} · {p["turns"]} turns'
@@ -261,3 +270,80 @@ def to_index(rec: dict) -> str:
     sub = f"Family tree · {len(pages)} pages · {len(threads)} threads"
     return (INDEX.replace("__CSS__", CSS).replace("__TITLE__", html.escape(rec.get("name") or "Untitled"))
                  .replace("__SUBTITLE__", html.escape(sub)).replace("__LIST__", body))
+
+
+# ---- Markdown pages, for notes apps such as Obsidian ---------------------------
+# Written when MOLT_PAGES is markdown or both. Each page opens with YAML front matter, so a notes app can
+# sort and filter pages, and links use plain relative Markdown links, so they resolve inside one family
+# folder however many families the vault holds.
+
+def md_name(html_file: str) -> str:
+    """The Markdown page's file name: the page record keeps the .html name, and both share one stem."""
+    return html_file[:-5] + ".md" if html_file.endswith(".html") else html_file + ".md"
+
+
+def md_link(text: str, target: str) -> str:
+    return f"[{text.replace('[', '(').replace(']', ')')}]({quote(target)})"
+
+
+def md_value(text) -> str:
+    """A front-matter value that YAML reads back as the same text."""
+    return json.dumps(str(text), ensure_ascii=False)
+
+
+def md_quote(text: str) -> str:
+    return "\n".join("> " + line if line else ">" for line in text.splitlines())
+
+
+def to_md(title: str, subtitle: str, ts: list[dict], prev=None, tree=None, page=None) -> str:
+    """One Markdown page. page is the record from .family.json (stamp, first, last, turns) when the
+    page belongs to a family; a whole-thread copy has none."""
+    front = ["---", f"title: {md_value(title)}", "molt: page"]
+    if page:
+        m = re.match(r"(\d{4}-\d{2}-\d{2}) (\d{2})\.(\d{2})", page["stamp"])
+        if m:
+            front.append(f"moved_out: {m.group(1)}T{m.group(2)}:{m.group(3)}")
+        front += [f"conversation: {md_value(page['first'] + ' → ' + page['last'])}", f"turns: {page['turns']}"]
+    front += ["tags: [molt]", "---", ""]
+    lines = front + [f"# {title}", "", f"*{subtitle}*", ""]
+    links = []
+    if prev:
+        links.append(md_link(f"← earlier: {prev['title']} · {prev['first']} to {prev['last']}", md_name(prev["file"])))
+    if tree:
+        links.append(md_link("family tree", tree))
+    if links:
+        lines += [" · ".join(links), ""]
+    for turn in ts:
+        lines += [f"### {turn['name']} · {turn['when']}".rstrip(" ·"), ""]
+        for kind, text in turn["parts"]:
+            if kind == "say":
+                lines += [text, ""]
+            elif kind == "think":
+                lines += ["> [!quote]- thinking", md_quote(text), ""]
+            elif kind == "tool":
+                lines += ["· `" + text.replace("`", "'") + "`", ""]
+            elif kind == "image":
+                lines += ["*[image]*", ""]
+    return "\n".join(lines)
+
+
+def to_index_md(rec: dict) -> str:
+    """index.md for one family: the same tree as index.html, as a nested Markdown list."""
+    pages, threads = rec["pages"], rec["threads"]
+    kids, under, loose = family_tree(rec)
+    name = rec.get("name") or "Untitled"
+    lines = ["---", f"title: {md_value(name)}", "molt: family", f"pages: {len(pages)}", f"threads: {len(threads)}",
+             "tags: [molt]", "---", "", f"# {name}", "", f"*Family tree · {len(pages)} pages · {len(threads)} threads*", ""]
+
+    def node(p: dict, depth: int) -> None:
+        pad = "  " * depth
+        lines.append(pad + "- " + md_link(f"{p['title']} · {p['first']} to {p['last']} · {p['turns']} turns", md_name(p["file"])))
+        lines.extend(f"{pad}  - *continues in Claude Code: {x}*" for x in under.get(p["stamp"], []))
+        for c in kids.get(p["stamp"], []):
+            node(c, depth + 1)
+
+    for p in kids.get(None, []):
+        node(p, 0)
+    if loose:
+        lines += ["", "## Threads with nothing moved out yet", ""] + [f"- *continues in Claude Code: {x}*" for x in loose]
+    return "\n".join(lines) + "\n"

@@ -1,6 +1,6 @@
 # Molt — the rolling window
 
-*by ayakohi and Cygnus* · version 0.3.3 · MIT license
+*by ayakohi and Cygnus* · version 0.4.0 · MIT license
 
 Molt keeps one long Claude Code conversation going without compacting it.
 
@@ -72,6 +72,8 @@ molt can fall short that we know of.
 - **A thread that stays itself.** The recent conversation is untouched, word for word.
 - **A readable archive.** Everything that moved out becomes an HTML page in `~/Thread Archive`. Each page
   carries everything it needs inside itself and fetches nothing from the internet.
+- **Or Markdown notes in your vault.** Point the archive into an Obsidian vault and molt writes notes instead
+  (see [Using it with Obsidian](#using-it-with-obsidian)).
 - **A family tree for forks.** If you fork a conversation, the fork's pages land in the same folder and link
   back to the history they share.
 - **Search by word, by meaning and by date** across everything that was moved out, on your own computer.
@@ -259,6 +261,68 @@ knowing about all three pages, not only the last.
 - **No skill at all.** Molt works without a roll note. The menu asks before going on, and the command line
   takes `--no-note`.
 - **How much to keep.** `KEEP_K = 200` at the top of `roll.py`, in thousands of tokens.
+- **Where the archive lives, and its page format.** Two settings, below.
+
+## Settings
+
+Two optional environment variables. Leave both unset and molt behaves as described everywhere else.
+
+| Variable | What it does | Default |
+|---|---|---|
+| `MOLT_ARCHIVE` | The folder the archive lives in, eg. a folder inside your notes vault | `~/Thread Archive` |
+| `MOLT_PAGES` | The format of the readable pages: `html`, `markdown`, or `both` | `html` |
+
+Set them where every part of molt can see them: the hooks, the menu and Claude's searches.
+
+- **Windows**, in a terminal, then restart Claude Code:
+
+      setx MOLT_ARCHIVE "%USERPROFILE%\Documents\My Vault\Thread Archive"
+      setx MOLT_PAGES markdown
+
+- **Mac or Linux**, at the end of `~/.zshrc` or `~/.bashrc`, then open a new terminal and restart Claude Code:
+
+      export MOLT_ARCHIVE="$HOME/Documents/My Vault/Thread Archive"
+      export MOLT_PAGES=markdown
+
+- **Claude Code only** (the hooks and Claude's searches, but not the double-click menu): add them to
+  `~/.claude/settings.json` under `"env": { "MOLT_ARCHIVE": "...", "MOLT_PAGES": "markdown" }`.
+
+Changing `MOLT_ARCHIVE` later starts a fresh archive in the new folder. To keep one shelf, move the old
+folder's contents into the new one before your next roll.
+
+## Using it with Obsidian
+
+Obsidian keeps notes as Markdown files in a folder, its *vault*. Molt can write its pages straight into it.
+
+1. **Choose a folder inside your vault**, eg. `My Vault/Thread Archive`.
+2. **Set `MOLT_ARCHIVE` to that folder and `MOLT_PAGES` to `markdown`**, as shown in Settings above. Use
+   `both` if you also want the browser pages.
+3. **Roll as usual.** New pages appear in the vault as notes, one folder per conversation family.
+
+What you get in Obsidian:
+
+- **One note per moved-out part**, each speaker under their own heading, with Claude's thinking folded away
+  in a collapsible block and tool use as one quiet line.
+- **Front matter on every note**: `title`, `moved_out` (when the roll happened), `conversation` (the span it
+  covers), `turns`, and the tag `molt`. Search `tag:#molt`, or sort and filter with Dataview or Bases.
+- **`index.md` in each family folder**: the family tree as a nested list of links, the same as `index.html`.
+- **A link at the top of each note** back to the part before it.
+- **The bookkeeping stays out of sight.** `.raw` and `.family.json` start with a dot, so Obsidian does not
+  show them. Leave them in place: search and future rolls read them.
+
+Things to know:
+
+- **Keep page names and folders as molt made them.** The family record and the links between pages point
+  at those names. Rename a note and the next roll's links will not find it.
+- **Pages made before you switched** stay as they were. `python roll.py copy <id>` makes a fresh readable
+  copy of a whole thread in the current format.
+- **A synced vault carries the archive with it.** If your vault syncs through iCloud, Dropbox, OneDrive or
+  similar, your moved-out conversations, including the raw copies, go wherever the vault goes.
+- **Your own memory files stay yours.** Molt only writes inside the archive folder; it never edits other
+  notes in the vault.
+
+**Handing molt to your Claude?** Point it at this README. Everything it needs to set this up is in Set up,
+Settings and this section.
 
 ## Commands
 

@@ -45,9 +45,21 @@ import readable as R   # noqa: E402
 if hasattr(sys.stdout, "reconfigure"):      # in place, so loading this file twice never closes the first stream
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-__version__ = "0.3.3"
+__version__ = "0.4.0"
 
-ARCHIVE = Path(os.environ.get("ROLL_ARCHIVE") or Path.home() / "Thread Archive")   # override for tests only
+# ---- settings, read from environment variables (see "Settings" in README.md) ----------------
+# MOLT_ARCHIVE  where the archive lives, eg. a folder inside an Obsidian vault. ROLL_ARCHIVE is the old name.
+# MOLT_PAGES    html (the default), markdown, or both: the format of the readable pages.
+ARCHIVE = Path(os.environ.get("MOLT_ARCHIVE") or os.environ.get("ROLL_ARCHIVE")
+               or Path.home() / "Thread Archive").expanduser()
+PAGE_FORMATS = {"html": ("html",), "markdown": ("md",), "md": ("md",), "both": ("html", "md")}
+
+
+def page_formats() -> tuple:
+    """('html',), ('md',) or ('html', 'md'), from MOLT_PAGES; anything unknown means html."""
+    return PAGE_FORMATS.get((os.environ.get("MOLT_PAGES") or "html").strip().lower(), ("html",))
+
+
 KEEP_K = 200                 # thousands of tokens of conversation left after a trim
 FRESH_K = 40                 # thousands of tokens at the newest end that stay fully intact
 THIN_OVER = 600              # a tool result longer than this many characters can be shortened
@@ -75,7 +87,8 @@ def unique_stamp(folder: Path) -> str:
     exists in this folder. Never overwrites a copy."""
     base = datetime.now().strftime(STAMP)
     stamp, n = base, 1
-    while list(folder.glob(f"{stamp}*.html")) or list((folder / ".raw").glob(f"{stamp}*.jsonl")):
+    while (list(folder.glob(f"{stamp}*.html")) or list(folder.glob(f"{stamp}*.md"))
+           or list((folder / ".raw").glob(f"{stamp}*.jsonl"))):
         n += 1
         stamp = f"{base} ({n})"
     return stamp
@@ -537,7 +550,9 @@ def execute(t: "T.Thread", job: dict, thin: bool, guard=None) -> bool:
     folder_existed = folder.exists()
     raw = folder / ".raw"
     raw_existed = raw.exists()
-    before = {name: (folder / name).read_bytes() if (folder / name).exists() else None for name in (FAMILY, "index.html")}
+    before = {name: (folder / name).read_bytes() if (folder / name).exists() else None
+              for name in (FAMILY, "index.html", "index.md")}
+    formats = page_formats()
     made = []                                             # files this run wrote, for cleanup
     swapped = False                                       # until the swap, the thread file is untouched
     try:
@@ -566,9 +581,13 @@ def execute(t: "T.Thread", job: dict, thin: bool, guard=None) -> bool:
                     f.write(t.lines[i] + "\n")
             sub = (f"Moved out of the window on {datetime.now():%d %b %Y, %H:%M} · "
                    f"conversation from {job['first']} to {job['last']}")
-            made.append(folder / file)
-            made[-1].write_text(R.to_html(t.title(), sub, job["turns"], page_by_stamp(rec, loc["prev"]), "index.html"),
-                                encoding="utf-8")
+            prev_page = page_by_stamp(rec, loc["prev"])
+            if "html" in formats:                         # the record keeps the .html name; a .md page shares its stem
+                made.append(folder / file)
+                made[-1].write_text(R.to_html(t.title(), sub, job["turns"], prev_page, "index.html"), encoding="utf-8")
+            if "md" in formats:
+                made.append(folder / R.md_name(file))
+                made[-1].write_text(R.to_md(t.title(), sub, job["turns"], prev_page, "index.md", page), encoding="utf-8")
 
         # 2. build the new thread: bookkeeping lines everywhere + chat lines not moved out.
         #    A live row whose parent moved out is joined to the previous kept live row, or starts the thread.
@@ -620,7 +639,10 @@ def execute(t: "T.Thread", job: dict, thin: bool, guard=None) -> bool:
                                     last_trim_leaf=new.rows[leaf].get("uuid") if leaf is not None else None,
                                     last_trim_when=datetime.now().isoformat(timespec="seconds"))
         write_hidden(folder / FAMILY, json.dumps(rec, indent=2, ensure_ascii=False))
-        (folder / "index.html").write_text(R.to_index(rec), encoding="utf-8")
+        if "html" in formats:
+            (folder / "index.html").write_text(R.to_index(rec), encoding="utf-8")
+        if "md" in formats:
+            (folder / "index.md").write_text(R.to_index_md(rec), encoding="utf-8")
     except Exception as e:
         print(f"\nThe trim failed: {e}")
         undo(t, backup, tmp, made, folder, folder_existed, raw, raw_existed, before, swapped)
@@ -631,12 +653,13 @@ def execute(t: "T.Thread", job: dict, thin: bool, guard=None) -> bool:
     print(f"\nDone. {repaired} pointers repaired. Check: OK")
     if shortened:
         print(f"Shortened {shortened} tool outputs; the originals are in {raw / (stamp + '.thinned.jsonl')}")
+    tree = "index.html" if "html" in formats else "index.md"
     if page:
-        print(f"Readable copy: {folder / page['file']}")
+        print(f"Readable copy: {folder / (page['file'] if 'html' in formats else R.md_name(page['file']))}")
         job["new_raw"] = raw / f"{stamp}.jsonl"            # indexed by trim() once the archive lock is let go
     else:
         print("Nothing needed a new page.")
-    print(f"Family tree: {folder / 'index.html'}")
+    print(f"Family tree: {folder / tree}")
     return True
 
 
@@ -687,11 +710,15 @@ def copy_whole(t: "T.Thread") -> Path:
     rows = t.branch()
     first = R.clock(t.rows[rows[0]]) if rows else ""
     last = R.clock(t.rows[rows[-1]]) if rows else ""
-    path = folder / f"{unique_stamp(folder)} {safe(t.title())}.html"
-    path.write_text(R.to_html(t.title(), f"The whole thread · from {first} to {last}", R.turns(t, rows)),
-                    encoding="utf-8")
-    print(f"Readable copy: {path}")
-    return path
+    sub, ts = f"The whole thread · from {first} to {last}", R.turns(t, rows)
+    stem = f"{unique_stamp(folder)} {safe(t.title())}"
+    paths = []
+    for fmt in page_formats():
+        paths.append(folder / f"{stem}.{fmt}")
+        paths[-1].write_text(R.to_html(t.title(), sub, ts) if fmt == "html" else R.to_md(t.title(), sub, ts),
+                             encoding="utf-8")
+        print(f"Readable copy: {paths[-1]}")
+    return paths[0]
 
 
 # moved: searching the moved-out pages now lives in search.py (by word, by meaning, by date).
@@ -722,7 +749,7 @@ def history(t: "T.Thread", keep_k: int) -> str:
         home = "~/" + loc["folder"].relative_to(Path.home()).as_posix()
     except ValueError:
         home = loc["folder"].as_posix()
-    out.append(f"Folder: {home} · open index.html there for the tree.")
+    out.append(f"Folder: {home} · open its index page there for the tree.")
     out.append('Search them with: python ~/.claude/molt/roll.py search "words"   (add --from / --to for dates)')
     return "\n".join(out)
 
